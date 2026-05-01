@@ -3,7 +3,6 @@ package dsm
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -44,16 +43,13 @@ func (r *ApplicationResponse) Unmarshal(msg []byte) error {
 	return nil
 }
 
-/**
- * Validate the response of senhasegura server
- */
 func (r *ApplicationResponse) Validate() error {
 	if r.Error != "" {
-		return fmt.Errorf(r.Message)
+		return fmt.Errorf("%s", r.Message)
 	}
 
 	if r.Response.Error {
-		return fmt.Errorf(r.Response.Message)
+		return fmt.Errorf("%s", r.Response.Message)
 	}
 
 	return nil
@@ -79,41 +75,37 @@ func (r *ApplicationResponse) GetEntity() interface{} {
 	return r.Response
 }
 
-/**
- * Save the current client info to
- * files at /var/run/secrets/senhasegura/iso
- */
 func (a *ApplicationResponse) SaveToFile() error {
 	fmt.Println("Adding credentials to system...")
 
 	secretDirectory := viper.GetString("SENHASEGURA_SECRETS_FOLDER") + "/senhasegura/iso"
-	err := os.MkdirAll(secretDirectory, os.ModePerm)
+	err := os.MkdirAll(secretDirectory, 0700)
 	if err != nil {
 		return err
 	}
 
-	err = ioutil.WriteFile(
+	err = os.WriteFile(
 		secretDirectory+"/SENHASEGURA_URL",
 		[]byte(viper.GetString("SENHASEGURA_URL")),
-		os.ModePerm,
+		0600,
 	)
 	if err != nil {
 		return err
 	}
 
-	err = ioutil.WriteFile(
+	err = os.WriteFile(
 		secretDirectory+"/SENHASEGURA_CLIENT_ID",
 		[]byte(a.ID),
-		os.ModePerm,
+		0600,
 	)
 	if err != nil {
 		return err
 	}
 
-	err = ioutil.WriteFile(
+	err = os.WriteFile(
 		secretDirectory+"/SENHASEGURA_CLIENT_SECRET",
 		[]byte(a.Signature),
-		os.ModePerm,
+		0600,
 	)
 	if err != nil {
 		return err
@@ -123,16 +115,12 @@ func (a *ApplicationResponse) SaveToFile() error {
 	return nil
 }
 
-/**
- * Save multiple credentials on folders
- * "/var/run/secrets/senhasegura/[application_name]"
- */
 func (s secrets) SaveToFile() error {
 	fmt.Println("Adding credentials to system...")
 
 	secretDirectory := viper.GetString("SENHASEGURA_SECRETS_FOLDER") + "/senhasegura"
 
-	err := os.MkdirAll(secretDirectory, os.ModePerm)
+	err := os.MkdirAll(secretDirectory, 0700)
 	if err != nil {
 		return err
 	}
@@ -142,13 +130,11 @@ func (s secrets) SaveToFile() error {
 		return err
 	}
 
-	// Read dirs and files inside /var/run/secrets/senhasegura
-	dir, err := ioutil.ReadDir(secretDirectory)
+	dir, err := os.ReadDir(secretDirectory)
 	if err != nil {
 		return err
 	}
 
-	// Remove all dirs and files inside /var/run/secrets/senhasegura
 	for _, d := range dir {
 		err := os.RemoveAll(path.Join([]string{secretDirectory, d.Name()}...))
 
@@ -157,7 +143,7 @@ func (s secrets) SaveToFile() error {
 		}
 	}
 
-	err = os.MkdirAll(secretDirectory, os.ModePerm)
+	err = os.MkdirAll(secretDirectory, 0700)
 	if err != nil {
 		return err
 	}
@@ -169,7 +155,7 @@ func (s secrets) SaveToFile() error {
 			secret.Identity,
 		)
 
-		err = os.MkdirAll(folder, os.ModePerm)
+		err = os.MkdirAll(folder, 0700)
 		if err != nil {
 			return err
 		}
@@ -191,17 +177,13 @@ func (s secrets) GetMinTTL() int64 {
 	return ttl
 }
 
-/**
- * Save the data of secret on folders
- * "/etc/run/secrets/senhasegura/[application_name]/[secret_identifier]"
- */
 func (s Secret) saveToFile(folder string) error {
 	for _, data := range s.Data {
 		for filename, content := range data {
-			err := ioutil.WriteFile(
+			err := os.WriteFile(
 				fmt.Sprintf("%s/%s", folder, filename),
 				[]byte(content),
-				os.ModePerm,
+				0600,
 			)
 			if err != nil {
 				return err
@@ -218,7 +200,7 @@ func (s Secret) getMinTTL(current int64) int64 {
 		for key, value := range data {
 			if key == "TTL" && value != "" {
 				ttl, err := strconv.ParseInt(value, 10, 64)
-				if err != nil && ttl > 10 && ttl < newTTL {
+				if err == nil && ttl > 10 && ttl < newTTL {
 					newTTL = ttl
 				}
 			}
@@ -228,7 +210,6 @@ func (s Secret) getMinTTL(current int64) int64 {
 	return newTTL
 }
 
-// Remove o conteudo de um diretorio
 func RemoveContents(dir string) error {
 	d, err := os.Open(dir)
 	if err != nil {

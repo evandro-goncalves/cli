@@ -23,7 +23,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -45,7 +44,7 @@ var RunbCmd = &cobra.Command{
 	Long:  `Running Belt plugin to insert/get/replace environment variables in most CI/CD pipelines.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if isDisabled() {
-			return errors.Errorf("SENHASEGURA_DISABLE_RUNB is set to true. Plugin is disabled.")
+			return fmt.Errorf("SENHASEGURA_DISABLE_RUNB is set to true. Plugin is disabled.")
 		}
 
 		client, appClient, err := registerApplication()
@@ -60,7 +59,7 @@ var RunbCmd = &cobra.Command{
 
 		_, err = varClient.Register(envVars, mapVars)
 		if err != nil {
-			return errors.Errorf("Error when posting variables in senhasegura: " + err.Error())
+			return fmt.Errorf("error when posting variables in senhasegura: %w", err)
 		}
 
 		secretsResponse, err := appClient.ListSecrets()
@@ -110,7 +109,7 @@ func injectEnvironmentVariables(secrets []dsmSdk.Secret) error {
 		return injectLinux(secrets)
 
 	default:
-		return errors.Errorf("Tool '%s' is invalid, it must be one of the following values: github, azure-devops, bamboo, bitbucket, circleci, teamcity or linux", ToolName)
+		return fmt.Errorf("tool '%s' is invalid, it must be one of the following values: github, azure-devops, bamboo, bitbucket, circleci, teamcity or linux", ToolName)
 	}
 }
 
@@ -157,10 +156,11 @@ func inject(secrets []dsmSdk.Secret, format string) error {
 		secretsFile = ".runb.vars"
 	}
 
-	file, err := os.OpenFile(secretsFile, os.O_CREATE|os.O_RDWR, 0660)
+	file, err := os.OpenFile(secretsFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 
 	for key, value := range kv {
 		v("Injecting secret into %s: %s.....", secretsFile, key)
@@ -172,8 +172,6 @@ func inject(secrets []dsmSdk.Secret, format string) error {
 
 		v("Success!\n")
 	}
-
-	file.Close()
 
 	v("Secrets injected!\n")
 
@@ -232,7 +230,7 @@ func deleteCICDVariables() error {
 		v("Is not possible to delete %s variables!\n", ToolName)
 
 	default:
-		return errors.Errorf("Tool '%s' is invalid, it must be one of the following values: github, azure-devops, bamboo, bitbucket, circleci, teamcity or linux", ToolName)
+		return fmt.Errorf("tool '%s' is invalid, it must be one of the following values: github, azure-devops, bamboo, bitbucket, circleci, teamcity or linux", ToolName)
 	}
 
 	v("Finish\n")
@@ -243,7 +241,7 @@ func deleteCICDVariables() error {
 func deleteGitLabVars() error {
 	if !IsSet("GITLAB_ACCESS_TOKEN", "CI_API_V4_URL", "CI_PROJECT_ID") {
 		v("Deletion failed\n")
-		v("To delete github variables, you need to define the configs GITLAB_ACCESS_TOKEN, CI_API_V4_URL and CI_PROJECT_ID\n")
+		v("To delete gitlab variables, you need to define the configs GITLAB_ACCESS_TOKEN, CI_API_V4_URL and CI_PROJECT_ID\n")
 		return nil
 	}
 
@@ -253,6 +251,13 @@ func deleteGitLabVars() error {
 		return nil
 	}
 
+	apiURL, err := url.ParseRequestURI(viper.GetString("CI_API_V4_URL"))
+	if err != nil {
+		return fmt.Errorf("invalid CI_API_V4_URL: %w", err)
+	}
+	host := apiURL.Scheme + "://" + apiURL.Host
+	basePath := strings.TrimRight(apiURL.Path, "/")
+
 	headers := map[string]string{"PRIVATE-TOKEN": viper.GetString("GITLAB_ACCESS_TOKEN")}
 
 	for key := range kv {
@@ -260,17 +265,18 @@ func deleteGitLabVars() error {
 
 		resource := fmt.Sprintf(
 			"%s/projects/%s/variables/%s",
-			viper.GetString("CI_API_V4_URL"),
+			basePath,
 			viper.GetString("CI_PROJECT_ID"),
 			key,
 		)
 
 		_, err := isoSdk.DoRequest(
-			viper.GetString("GITLAB_ACCESS_TOKEN"),
+			host,
 			resource,
 			url.Values{},
 			headers,
 			http.MethodDelete,
+			viper.GetBool("insecure"),
 		)
 
 		if err != nil {

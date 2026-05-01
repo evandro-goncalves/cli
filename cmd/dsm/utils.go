@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-func getConfig() (string, string, string, bool) {
+func getConfig() (string, string, string, bool, bool) {
 	if !IsSet("SENHASEGURA_URL", "SENHASEGURA_CLIENT_ID", "SENHASEGURA_CLIENT_SECRET") {
 		log.Fatalf("Authentication data not found or missing parameters\n")
 	}
@@ -16,7 +16,8 @@ func getConfig() (string, string, string, bool) {
 	return viper.GetString("SENHASEGURA_URL"),
 		viper.GetString("SENHASEGURA_CLIENT_ID"),
 		viper.GetString("SENHASEGURA_CLIENT_SECRET"),
-		Verbose
+		Verbose,
+		viper.GetBool("insecure")
 }
 
 func IsSet(name ...string) bool {

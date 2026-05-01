@@ -27,7 +27,7 @@ import (
 	"github.com/senhasegura/dsmcli/cmd/dsm"
 )
 
-var Config string
+var Insecure bool
 
 var rootCmd = &cobra.Command{
 	Use:   "dsm",
@@ -46,7 +46,10 @@ func Execute() {
 func init() {
 	cobra.OnInitialize(initConfig)
 
-	rootCmd.PersistentFlags().StringVarP(&Config, "config", "c", "", "Configuration file (default is $HOME/.config.yaml)")
+	rootCmd.PersistentFlags().StringP("config", "c", "", "Configuration file (default is $HOME/.config.yaml)")
+	rootCmd.PersistentFlags().BoolVarP(&Insecure, "insecure", "i", false, "Ignore SSL verification")
+	viper.BindPFlag("config", rootCmd.PersistentFlags().Lookup("config"))
+	viper.BindPFlag("insecure", rootCmd.PersistentFlags().Lookup("insecure"))
 
 	rootCmd.AddCommand(dsm.RunbCmd)
 }
@@ -56,9 +59,9 @@ func initConfig() {
 	// Read in environment variables
 	viper.AutomaticEnv()
 
-	if Config != "" {
+	if configFile := viper.GetString("config"); configFile != "" {
 		// Use config file from the flag.
-		viper.SetConfigFile(Config)
+		viper.SetConfigFile(configFile)
 	} else if envConfig := viper.GetString("SENHASEGURA_CONFIG_FILE"); envConfig != "" {
 		// Use config from the environment variable.
 		viper.SetConfigFile(envConfig)
@@ -71,7 +74,6 @@ func initConfig() {
 		viper.AddConfigPath(home)
 		viper.SetConfigName(".config")
 		viper.SetConfigType("yaml")
-		Config = home + "/.config"
 	}
 
 	// If a config file is found, read it in.

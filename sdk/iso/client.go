@@ -3,13 +3,27 @@ package iso
 import (
 	"crypto/tls"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
+
+const defaultTimeout = 30 * time.Second
+
+var defaultClient = &http.Client{Timeout: defaultTimeout}
+
+var insecureTransport *http.Transport
+var insecureClient *http.Client
+
+func init() {
+	insecureTransport = http.DefaultTransport.(*http.Transport).Clone()
+	insecureTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec
+	insecureClient = &http.Client{Transport: insecureTransport, Timeout: defaultTimeout}
+}
 
 type Client struct {
 	url          string
@@ -17,12 +31,13 @@ type Client struct {
 	clientSecret string
 	accessToken  string
 	Verbose      bool
+	Insecure     bool
 }
 
 /**
  * Contructor for client object
  */
-func NewClient(senhaseguraUrl string, clientID string, clientSecret string, verbose bool) (Client, error) {
+func NewClient(senhaseguraUrl string, clientID string, clientSecret string, verbose bool, insecure bool) (Client, error) {
 	url := strings.Trim(string(senhaseguraUrl), "\n ")
 	if url == "" {
 		return Client{}, fmt.Errorf("URL cannot be null")
@@ -43,6 +58,7 @@ func NewClient(senhaseguraUrl string, clientID string, clientSecret string, verb
 		clientID:     clientID,
 		clientSecret: clientSecret,
 		Verbose:      verbose,
+		Insecure:     insecure,
 	}
 
 	return c, nil
@@ -120,7 +136,7 @@ func (c Client) call(method string, resource string, data url.Values, responseOb
 	headers["Content-Type"] = "application/x-www-form-urlencoded"
 	headers["Content-Length"] = strconv.Itoa(len(data.Encode()))
 
-	responseData, err := DoRequest(c.url, resource, data, headers, method)
+	responseData, err := DoRequest(c.url, resource, data, headers, method, c.Insecure)
 	if err != nil {
 		return err
 	}
@@ -138,7 +154,7 @@ func (c Client) call(method string, resource string, data url.Values, responseOb
 	return nil
 }
 
-func DoRequest(host string, resource string, data url.Values, headers map[string]string, method string) ([]byte, error) {
+func DoRequest(host string, resource string, data url.Values, headers map[string]string, method string, insecure bool) ([]byte, error) {
 	u, err := url.ParseRequestURI(host)
 	if err != nil {
 		return nil, err
@@ -146,10 +162,6 @@ func DoRequest(host string, resource string, data url.Values, headers map[string
 	u.Path = resource
 	urlStr := u.String()
 
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	httpClient := &http.Client{Transport: tr}
 	r, err := http.NewRequest(method, urlStr, strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, err
@@ -159,12 +171,20 @@ func DoRequest(host string, resource string, data url.Values, headers map[string
 		r.Header.Add(k, v)
 	}
 
-	resp, err := httpClient.Do(r)
+	var client *http.Client
+	if insecure {
+		client = insecureClient
+	} else {
+		client = defaultClient
+	}
+
+	resp, err := client.Do(r)
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 
-	responseData, err := ioutil.ReadAll(resp.Body)
+	responseData, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
