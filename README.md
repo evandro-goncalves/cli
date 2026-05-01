@@ -91,8 +91,25 @@ This way, developers will not have to worry about injecting secrets during pipel
 
 > **CI/CD Solutions**
 > 
-> By default DSM CLI can parse the secrets and inject it on tools like GitHub, Azure DevOps, Bamboo, BitBucket, CircleCI, TeamCity and Linux (default option). You can change the default option with the --tool-name argument during its execution.
+> By default DSM CLI can parse the secrets and inject it on tools like GitHub, Azure DevOps, Bamboo, BitBucket, CircleCI, TeamCity and Linux (default option). You can change the default option with the `--tool` (`-t`) argument during its execution.
 
+### Custom Output Formats
+
+For environments not natively supported, you can use the `custom` tool along with the `--format` (`-f`) flag to define how secrets should be injected.
+
+#### 1. Simplified Placeholders
+Use `%k` for the secret key and `%v` for the secret value. This format is applied to each secret individually.
+
+```bash
+dsm runb -a MyApp -s MySystem -e Dev -t custom --format "set %k=%v"
+```
+
+#### 2. Go Templating (Advanced)
+If your format string contains `{{`, it will be treated as a Go template and executed against the entire map of secrets. This is useful for generating complex files like JSON, YAML, or XML.
+
+```bash
+dsm runb -a MyApp -s MySystem -e Dev -t custom --format '{{ range $k, $v := . }}export {{ $k }}="{{ $v }}"{{"\n"}}{{ end }}'
+```
 
 ## Using DSM CLI to Register and Update Secrets
 
