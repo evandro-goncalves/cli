@@ -1,12 +1,14 @@
 package cmd
 
 import (
+	"bufio"
 	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
+	"text/template"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -22,6 +24,7 @@ var ToolName string
 var Environment string
 var System string
 var ApplicationName string
+var Format string
 
 var RunbCmd = &cobra.Command{
 	Use:   "runb",
@@ -63,7 +66,8 @@ func init() {
 	RunbCmd.Flags().StringVarP(&ApplicationName, "application", "a", "", "Application name (required)")
 	RunbCmd.Flags().StringVarP(&System, "system", "s", "", "Application system (required)")
 	RunbCmd.Flags().StringVarP(&Environment, "environment", "e", "", "Application environment (required)")
-	RunbCmd.Flags().StringVarP(&ToolName, "tool", "t", "linux", "Tool name [github, azure-devops, bamboo, bitbucket, circleci, teamcity, linux]")
+	RunbCmd.Flags().StringVarP(&ToolName, "tool", "t", "linux", "Tool name [github, azure-devops, bamboo, bitbucket, circleci, teamcity, linux, custom]")
+	RunbCmd.Flags().StringVarP(&Format, "format", "f", "", "Custom format to inject secrets using Go templating system")
 	RunbCmd.MarkFlagRequired("application")
 	RunbCmd.MarkFlagRequired("system")
 	RunbCmd.MarkFlagRequired("environment")
@@ -122,21 +126,26 @@ func loadMapVars() string {
 func injectEnvironmentVariables(secrets []dsm.Secret) error {
 	switch ToolName {
 	case "github":
-		return inject(secrets, "echo '%s=%s' >> $GITHUB_ENV\n")
+		return inject(secrets, "echo '%k=%v' >> $GITHUB_ENV\n")
 	case "azure-devops":
-		return inject(secrets, "echo '##vso[task.setvariable variable=%s;issecret=true;]%s'\n")
+		return inject(secrets, "echo '##vso[task.setvariable variable=%k;issecret=true;]%v'\n")
 	case "bamboo":
-		return inject(secrets, "(%s)=(.[%s])\n")
+		return inject(secrets, "(%k)=(.[%v])\n")
 	case "bitbucket":
-		return inject(secrets, "export (%s)=\"(.[%s])\"\n")
+		return inject(secrets, "export (%k)=\"(.[%v])\"\n")
 	case "circleci":
-		return inject(secrets, "echo '\"'\"'export (%s)=\"(.[%s])\"'\"'\"' >> $BASH_ENV\n")
+		return inject(secrets, "echo '\"'\"'export (%k)=\"(.[%v])\"'\"'\"' >> $BASH_ENV\n")
 	case "teamcity":
-		return inject(secrets, "echo '\"'\"'##teamcity[setParameter name=\"(%s)\" value=\"(.[%s])\"]'\"'\"'\"\n")
+		return inject(secrets, "echo '\"'\"'##teamcity[setParameter name=\"(%k)\" value=\"(.[%v])\"]'\"'\"'\"\n")
 	case "linux":
-		return inject(secrets, "declare -x %s='%s'\n")
+		return inject(secrets, "declare -x %k='%v'\n")
+	case "custom":
+		if Format == "" {
+			return fmt.Errorf("format is required when using custom tool")
+		}
+		return inject(secrets, Format)
 	default:
-		return fmt.Errorf("tool '%s' is invalid, it must be one of the following values: github, azure-devops, bamboo, bitbucket, circleci, teamcity or linux", ToolName)
+		return fmt.Errorf("tool '%s' is invalid, it must be one of the following values: github, azure-devops, bamboo, bitbucket, circleci, teamcity, linux or custom", ToolName)
 	}
 }
 
@@ -160,12 +169,32 @@ func inject(secrets []dsm.Secret, format string) error {
 	}
 	defer file.Close()
 
-	for key, value := range kv {
-		v("Injecting secret into %s: %s.....", secretsFile, key)
-		if _, err = file.WriteString(fmt.Sprintf(format, key, value)); err != nil {
-			return err
+	writer := bufio.NewWriter(file)
+	defer writer.Flush()
+
+	if strings.Contains(format, "{{") {
+		v("Using Go template format\n")
+		tmpl, err := template.New("custom").Parse(format)
+		if err != nil {
+			return fmt.Errorf("error parsing custom format: %w", err)
 		}
-		v("Success!\n")
+		if err := tmpl.Execute(writer, kv); err != nil {
+			return fmt.Errorf("error executing custom format template: %w", err)
+		}
+	} else {
+		v("Using placeholder format\n")
+		for key, value := range kv {
+			v("Injecting secret into %s: %s.....", secretsFile, key)
+			line := strings.ReplaceAll(format, "%k", key)
+			line = strings.ReplaceAll(line, "%v", value)
+			if !strings.HasSuffix(line, "\n") {
+				line += "\n"
+			}
+			if _, err = writer.WriteString(line); err != nil {
+				return err
+			}
+			v("Success!\n")
+		}
 	}
 
 	v("Secrets injected!\n")
@@ -176,8 +205,8 @@ func convertJSONToKV(secrets []dsm.Secret) map[string]string {
 	result := make(map[string]string)
 	for _, secret := range secrets {
 		for _, data := range secret.Data {
-			for k, val := range data {
-				result[k] = val
+			for key, value := range data {
+				result[key] = value
 			}
 		}
 	}
@@ -195,7 +224,7 @@ func deleteCICDVariables() error {
 	switch ToolName {
 	case "gitlab":
 		return deleteGitLabVars()
-	case "github", "azure-devops", "bamboo", "bitbucket", "circleci", "teamcity", "linux":
+	case "github", "azure-devops", "bamboo", "bitbucket", "circleci", "teamcity", "linux", "custom":
 		v("Is not possible to delete %s variables!\n", ToolName)
 	default:
 		return fmt.Errorf("tool '%s' is invalid, it must be one of the following values: github, azure-devops, bamboo, bitbucket, circleci, teamcity or linux", ToolName)
