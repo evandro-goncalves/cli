@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+	http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,10 +21,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/senhasegura/dsmcli/internal/dsm"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-
-	"github.com/senhasegura/dsmcli/cmd/dsm"
 )
 
 var Insecure bool
@@ -46,12 +45,12 @@ func Execute() {
 func init() {
 	cobra.OnInitialize(initConfig)
 
-	rootCmd.PersistentFlags().StringP("config", "c", "", "Configuration file (default is $HOME/.config.yaml)")
-	rootCmd.PersistentFlags().BoolVarP(&Insecure, "insecure", "i", false, "Ignore SSL verification")
-	viper.BindPFlag("config", rootCmd.PersistentFlags().Lookup("config"))
-	viper.BindPFlag("insecure", rootCmd.PersistentFlags().Lookup("insecure"))
+	rootCmd.PersistentFlags().StringP(dsm.KeyConfig, "c", "", "Configuration file (default is $HOME/.config.yaml)")
+	rootCmd.PersistentFlags().BoolVarP(&Insecure, dsm.KeyInsecure, "i", false, "Ignore SSL verification")
+	viper.BindPFlag("config", rootCmd.PersistentFlags().Lookup(dsm.KeyConfig))
+	viper.BindPFlag("insecure", rootCmd.PersistentFlags().Lookup(dsm.KeyInsecure))
 
-	rootCmd.AddCommand(dsm.RunbCmd)
+	rootCmd.AddCommand(RunbCmd)
 }
 
 // initConfig reads in config file and ENV variables if set.
@@ -59,10 +58,10 @@ func initConfig() {
 	// Read in environment variables
 	viper.AutomaticEnv()
 
-	if configFile := viper.GetString("config"); configFile != "" {
+	if configFile := viper.GetString(dsm.KeyConfig); configFile != "" {
 		// Use config file from the flag.
 		viper.SetConfigFile(configFile)
-	} else if envConfig := viper.GetString("SENHASEGURA_CONFIG_FILE"); envConfig != "" {
+	} else if envConfig := viper.GetString(dsm.KeyConfigFile); envConfig != "" {
 		// Use config from the environment variable.
 		viper.SetConfigFile(envConfig)
 	} else {

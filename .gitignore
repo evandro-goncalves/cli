@@ -1,3 +1,70 @@
-/build
+# =========================
+# GoLang specific
+# =========================
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+*.prof
+coverage.txt
+coverage.html
+
+# Dependency directories
+# vendor/
+
+# Go workspace files (used for local multi-module development)
+go.work
+go.work.sum
+
+# Go Tests
+*_test.go
+
+# env files (optional, but good practice to ignore)
+.env
+.env.local
+
+# =========================
+# Visual Studio Code specific
+# =========================
 /.vscode
-dockerfile
+
+# =========================
+# GoLand (JetBrains IDEs) specific
+# =========================
+.idea/
+*.iml
+*.iws
+
+# Run configurations (if you don't want to share them)
+# .run/
+
+# =========================
+# OS specific (macOS / Windows)
+# =========================
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
